@@ -37,12 +37,20 @@ def find_duplicates(input_dir, quick=False):
     image_hashes = {}
     hash_file_path = os.path.join(input_dir, "image_hashes.txt")
 
+
     # Read existing hashes from the file
     if os.path.exists(hash_file_path):
         with open(hash_file_path, "r") as hash_file:
             for line in hash_file:
-                file_path, hash1, hash2 = line.strip().split(",")
-                image_hashes[file_path] = (hash1, hash2)
+                split_line = line.strip().split(",")
+                if len(split_line) == 3:
+                    file_path, hash1, hash2 = split_line
+                    file_path = file_path.replace(',', '_')
+                    image_hashes[file_path] = (hash1, hash2)
+                else:
+                    print(f"Warning: Skipping malformed line in image_hashes.txt: {line.strip()}")
+
+
 
     print("Indexing image hashes...")
     indexing_progress_bar = tqdm(total=len(image_files), desc="Indexing", position=0, leave=True)
@@ -73,7 +81,15 @@ def find_duplicates(input_dir, quick=False):
     comparing_progress_bar = tqdm(total=len(image_files), desc="Comparing", position=0, leave=True)
 
     for i, file1 in enumerate(image_files):
+        if file1 not in image_hashes:
+            file1_image = Image.open(file1)
+            file1_hash = hash_image(file1_image)
+            flipped_file1 = file1_image.transpose(Image.FLIP_LEFT_RIGHT)
+            flipped_file1_hash = hash_image(flipped_file1)
+            image_hashes[file1] = (file1_hash, flipped_file1_hash)
+
         for file2 in image_files[i+1:]:
+            file1_hash, flipped_file1_hash = image_hashes[file1]
             if quick:
                 if quick_compare(file1, file2):
                     if file2 not in duplicates:
@@ -90,6 +106,7 @@ def find_duplicates(input_dir, quick=False):
     # Write the final updated hashes to the file
     with open(hash_file_path, "w") as hash_file:
         for file_path, (hash1, hash2) in image_hashes.items():
+            file_path = file_path.replace(',', '_')
             hash_file.write(f"{file_path},{hash1},{hash2}\n")
 
     return duplicates
@@ -100,7 +117,9 @@ def move_duplicates(duplicates, input_dir):
     Path(dupe_dir).mkdir(parents=True, exist_ok=True)
 
     for dupe in duplicates:
-        os.rename(os.path.join(input_dir, dupe), os.path.join(dupe_dir, dupe))
+        file_name = os.path.basename(dupe)
+        os.rename(dupe, os.path.join(dupe_dir, file_name))
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Find and move duplicate images")
