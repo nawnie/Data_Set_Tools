@@ -12,9 +12,13 @@ def hash_image(image_path, accurate=False):
     image = image.convert("L").resize((8, 8), Image.ANTIALIAS)  # Convert the image to grayscale and resize it
 
     if accurate:
-        return str(phash(image))
+        original_hash = str(phash(image))
+        flipped_hash = str(phash(image.transpose(Image.FLIP_LEFT_RIGHT)))
     else:
-        return str(average_hash(image))
+        original_hash = str(average_hash(image))
+        flipped_hash = str(average_hash(image.transpose(Image.FLIP_LEFT_RIGHT)))
+    
+    return original_hash, flipped_hash
 
 def find_duplicates(input_dir, quick=False, accurate=False):
     image_files = []
@@ -30,34 +34,29 @@ def find_duplicates(input_dir, quick=False, accurate=False):
     print("Hashing images...")
     hashing_progress_bar = tqdm(total=len(image_files), desc="Hashing", position=0, leave=True)
 
-    for file1 in image_files:
-        file1_hash = hash_image(file1, accurate)
-        if file1_hash in image_hashes:
-            duplicates.append((file1, image_hashes[file1_hash]))
+    save_interval = int(len(image_files) * 0.1)  # Save progress every 10%
+    if save_interval == 0:
+        save_interval = 1
+
+    hash_file_path = os.path.join(input_dir, "image_hashes.txt")
+
+    for i, file1 in enumerate(image_files):
+        original_hash, flipped_hash = hash_image(file1, accurate)
+        if original_hash in image_hashes:
+            duplicates.append((file1, image_hashes[original_hash]))
+        elif flipped_hash in image_hashes:
+            duplicates.append((file1, image_hashes[flipped_hash]))
         else:
-            image_hashes[file1_hash] = file1
+            image_hashes[original_hash] = file1
+            image_hashes[flipped_hash] = file1
 
-        save_interval = int(len(image_files) * 0.1)  # Save progress every 10%
-if save_interval == 0:
-    save_interval = 1
+        # Save progress every 10%
+        if i % save_interval == 0:
+            with open(hash_file_path, "w") as hash_file:
+                for hash_str, file_path in image_hashes.items():
+                    hash_file.write(f"{hash_str},{file_path}\n")
 
-hash_file_path = os.path.join(input_dir, "image_hashes.txt")
-
-for i, file1 in enumerate(image_files):
-    file1_hash = hash_image(file1, accurate)
-    if file1_hash in image_hashes:
-        duplicates.append((file1, image_hashes[file1_hash]))
-    else:
-        image_hashes[file1_hash] = file1
-
-    # Save progress every 10%
-    if i % save_interval == 0:
-        with open(hash_file_path, "w") as hash_file:
-            for hash_str, file_path in image_hashes.items():
-                hash_file.write(f"{hash_str},{file_path}\n")
-
-    hashing_progress_bar.update(1)
-
+        hashing_progress_bar.update(1)
 
     hashing_progress_bar.close()
 
@@ -88,3 +87,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     find_duplicates(args.input_dir, args.quick, args.accurate)
+
